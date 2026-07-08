@@ -124,31 +124,38 @@ export function usePoseLandmarker({
         setDimensions(dimensionsRef.current);
       }
 
-      const results = landmarker.detectForVideo(video, now);
-      const ctx = canvas.getContext("2d");
-      const pose = results.landmarks?.[0] as NormalizedLandmark[] | undefined;
+      try {
+        const results = landmarker.detectForVideo(video, now);
+        const ctx = canvas.getContext("2d");
+        const pose = results.landmarks?.[0] as NormalizedLandmark[] | undefined;
 
-      // Always kept current, even on frames with no detected pose (null),
-      // so consumers reading it never act on stale landmarks.
-      landmarksRef.current = pose ?? null;
+        // Always kept current, even on frames with no detected pose (null),
+        // so consumers reading it never act on stale landmarks.
+        landmarksRef.current = pose ?? null;
 
-      if (ctx) {
-        if (pose && pose.length > 0) {
-          setAiStatus("tracking");
-          drawPoseLandmarks(
-            ctx,
-            pose,
-            canvas.width,
-            canvas.height
-          );
-        } else {
-          // No pose detected — clear the canvas and wait.
-          setAiStatus("scanning");
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (ctx) {
+          if (pose && pose.length > 0) {
+            setAiStatus("tracking");
+            drawPoseLandmarks(
+              ctx,
+              pose,
+              canvas.width,
+              canvas.height
+            );
+          } else {
+            // No pose detected — clear the canvas and wait.
+            setAiStatus("scanning");
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+          }
         }
+
+        updateFps(now);
+      } catch (err) {
+        // A single bad frame should never permanently kill detection.
+        // Log it, skip this frame, and keep the loop alive below.
+        console.error("[PoseLandmarker] detection frame failed:", err);
       }
 
-      updateFps(now);
       rafRef.current = requestAnimationFrame(detect);
     },
     [videoRef, canvasRef, updateFps]

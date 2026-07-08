@@ -14,6 +14,22 @@ import { LANDMARK_INDICES } from "@/utils/poseConstants";
  */
 const MIN_VISIBILITY = 0.5;
 
+/**
+ * Maximum plausible in-plane shoulder rotation, in radians (~35°).
+ * Real shoulder lean rarely exceeds this while a person is roughly facing
+ * the camera in a try-on context — values beyond it are almost always
+ * landmark noise (partial occlusion, motion blur, a single bad detection)
+ * rather than genuine body lean. Clamping prevents the garment from
+ * snapping into an unrealistic spin on a noisy frame.
+ */
+const MAX_ROTATION_RAD = (35 * Math.PI) / 180;
+
+function clampRotation(angle: number): number {
+  if (angle > MAX_ROTATION_RAD) return MAX_ROTATION_RAD;
+  if (angle < -MAX_ROTATION_RAD) return -MAX_ROTATION_RAD;
+  return angle;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Coordinate helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -61,7 +77,7 @@ export function calculateShoulderMeasurement(
   const dx = right.x - left.x;
   const dy = right.y - left.y;
   const widthPx = Math.sqrt(dx * dx + dy * dy);
-  const angle = Math.atan2(dy, dx);
+  const angle = clampRotation(Math.atan2(dy, dx));
 
   const midpoint: Point2D = {
     x: (left.x + right.x) / 2,
@@ -89,6 +105,7 @@ export function calculateShoulderWidth(
 /**
  * Returns the angle of the shoulder line in radians.
  * Positive values mean the right shoulder is lower than the left.
+ * Clamped to ±MAX_ROTATION_RAD — see clampRotation above.
  */
 export function calculateBodyRotation(
   landmarks: NormalizedLandmark[],

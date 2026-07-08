@@ -61,8 +61,21 @@ export default function WebcamView({ garment = null }: WebcamViewProps) {
   const [activeDeviceId, setActiveDeviceId] = useState<string | null>(null);
   const { devices, selectedDeviceId, selectDevice, refresh } = useVideoDevices();
 
-  // Forwarded to react-webcam so MediaPipe can read frames directly from it.
-  const videoRef = useRef<HTMLVideoElement>(null);
+  // react-webcam's ref behavior differs by version: some forward the ref
+  // straight to the underlying <video> element, others give the component
+  // instance (which exposes the real element via `.video`). This callback
+  // ref handles both shapes so pose detection always gets a real
+  // HTMLVideoElement, never the wrong object.
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const setVideoRef = useCallback((instance: Webcam | null) => {
+    if (!instance) {
+      videoRef.current = null;
+      return;
+    }
+    const maybeVideo = (instance as unknown as { video?: HTMLVideoElement | null })
+      .video;
+    videoRef.current = maybeVideo ?? (instance as unknown as HTMLVideoElement);
+  }, []);
   const poseCanvasRef = useRef<HTMLCanvasElement>(null);
   const garmentCanvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -165,7 +178,7 @@ export default function WebcamView({ garment = null }: WebcamViewProps) {
       {isStreaming && activeDeviceId && (
         <div className="absolute inset-0">
           <Webcam
-            ref={videoRef}
+            ref={setVideoRef}
             audio={false}
             mirrored
             videoConstraints={{ deviceId: { exact: activeDeviceId } }}

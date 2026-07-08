@@ -23,6 +23,35 @@ function loadGarmentImage(url: string): Promise<HTMLImageElement> {
 }
 
 /**
+ * How long (ms) to keep rendering the last known-good transform after
+ * shoulder landmarks become momentarily unreliable — covers brief
+ * occlusion, motion blur, or a single noisy detection frame without the
+ * garment visibly flashing away and reappearing every time confidence
+ * dips for an instant. Genuine tracking loss (person steps out of frame)
+ * still clears normally once this window passes.
+ */
+const HOLD_GRACE_MS = 400;
+
+/** Draws one already-smoothed garment transform onto the canvas. */
+function drawGarment(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  transform: SmoothedTransform
+): void {
+  ctx.save();
+  ctx.translate(transform.x, transform.y);
+  ctx.rotate(transform.rotation);
+  ctx.drawImage(
+    image,
+    -transform.width / 2,
+    -transform.height / 2,
+    transform.width,
+    transform.height
+  );
+  ctx.restore();
+}
+
+/**
  * Drives the garment overlay's own requestAnimationFrame loop.
  *
  * Deliberately decoupled from the pose-detection loop in usePoseLandmarker:
@@ -49,6 +78,9 @@ export function useGarmentRenderer({
   const smoothedRef = useRef<SmoothedTransform | null>(null);
   const lastFrameTimeRef = useRef<number>(performance.now());
   const currentImageRef = useRef<HTMLImageElement | null>(null);
+  // Timestamp (rAF clock) of the most recent frame where shoulders were
+  // reliably detected — drives the hold-grace-period fallback below.
+  const lastValidTimeRef = useRef<number>(0);
 
   // Load / swap the garment image whenever the selected garment changes.
   // Resetting smoothedRef avoids the overlay tweening from the old
@@ -57,12 +89,14 @@ export function useGarmentRenderer({
     if (!garment) {
       currentImageRef.current = null;
       smoothedRef.current = null;
+      lastValidTimeRef.current = 0;
       return;
     }
 
     let cancelled = false;
     currentImageRef.current = null;
     smoothedRef.current = null;
+    lastValidTimeRef.current = 0;
 
     loadGarmentImage(garment.imageUrl)
       .then((img) => {
@@ -82,6 +116,7 @@ export function useGarmentRenderer({
   useEffect(() => {
     if (!enabled) {
       smoothedRef.current = null;
+      lastValidTimeRef.current = 0;
       const canvas = canvasRef.current;
       const ctx = canvas?.getContext("2d");
       if (ctx && canvas) ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -108,29 +143,32 @@ export function useGarmentRenderer({
         const landmarks = landmarksRef.current;
         const image = currentImageRef.current;
 
-        if (landmarks && garment && image) {
-          const target = calculateGarmentTransform(
-            landmarks,
-            { width: videoWidth, height: videoHeight },
-            garment
-          );
+        if (garment && image) {
+          const target = landmarks
+            ? calculateGarmentTransform(
+                landmarks,
+                { width: videoWidth, height: videoHeight },
+                garment
+              )
+            : null;
 
           if (target) {
             const smoothed = smoothTransform(target, smoothedRef.current, deltaMs);
             smoothedRef.current = smoothed;
-
-            ctx.save();
-            ctx.translate(smoothed.x, smoothed.y);
-            ctx.rotate(smoothed.rotation);
-            ctx.drawImage(
-              image,
-              -smoothed.width / 2,
-              -smoothed.height / 2,
-              smoothed.width,
-              smoothed.height
-            );
-            ctx.restore();
+            lastValidTimeRef.current = now;
+            drawGarment(ctx, image, smoothed);
+          } else if (
+            smoothedRef.current &&
+            now - lastValidTimeRef.current < HOLD_GRACE_MS
+          ) {
+            // Shoulders are momentarily unreliable (or landmarks briefly
+            // missing) but we were tracking well very recently — hold the
+            // last known-good transform instead of letting the garment
+            // flash away for a single noisy frame.
+            drawGarment(ctx, image, smoothedRef.current);
           }
+          // else: genuinely lost tracking beyond the grace window — canvas
+          // stays cleared (already cleared above) until tracking resumes.
         }
       }
 
@@ -145,6 +183,7 @@ export function useGarmentRenderer({
         rafRef.current = null;
       }
       smoothedRef.current = null;
+      lastValidTimeRef.current = 0;
     };
   }, [enabled, canvasRef, landmarksRef, garment, videoWidth, videoHeight]);
 }
