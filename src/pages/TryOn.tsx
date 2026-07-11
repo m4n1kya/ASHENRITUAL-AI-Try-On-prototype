@@ -4,7 +4,7 @@ import { Check, ShirtIcon, Sliders } from "lucide-react";
 import GlassPanel from "@/components/ui/GlassPanel";
 import Button from "@/components/ui/Button";
 import WebcamView from "@/components/webcam/WebcamView";
-import { PLACEHOLDER_GARMENTS } from "@/data/garments";
+import { getEnabledGarments } from "@/data/garments";
 import { cn } from "@/utils/cn";
 
 /**
@@ -14,19 +14,16 @@ import { cn } from "@/utils/cn";
  * (permission prompt → requesting → live feed / denied), with pose
  * tracking and the garment overlay layered above it.
  *
- * All four garment rail items are now wired to the rendering pipeline —
- * clicking one selects it (clicking the active one deselects), and
- * WebcamView receives exactly one GarmentDefinition or null. The
- * GarmentOverlay / useGarmentRenderer / garmentMath pipeline underneath
- * is unchanged from Phase 2 — it was built garment-agnostic from the
- * start, so wiring in three more garments required no changes there,
- * only more entries in the data catalog.
+ * The garment rail renders whatever getEnabledGarments() returns from the
+ * data catalog (src/data/garments.ts) — adding, retiring, or disabling a
+ * garment is a one-file change and requires no edits here.
  */
 export default function TryOn() {
+  const garments = getEnabledGarments();
   const [selectedGarmentId, setSelectedGarmentId] = useState<string | null>(null);
 
   const selectedGarment =
-    PLACEHOLDER_GARMENTS.find((g) => g.id === selectedGarmentId) ?? null;
+    garments.find((g) => g.id === selectedGarmentId) ?? null;
 
   const handleSelect = (garmentId: string) => {
     setSelectedGarmentId((current) => (current === garmentId ? null : garmentId));
@@ -75,7 +72,7 @@ export default function TryOn() {
               </div>
 
               <ul className="flex flex-col divide-y divide-white/5">
-                {PLACEHOLDER_GARMENTS.map((garment) => {
+                {garments.map((garment) => {
                   const isActive = garment.id === selectedGarmentId;
                   return (
                     <li key={garment.id}>

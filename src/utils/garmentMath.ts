@@ -7,6 +7,7 @@ import type {
   GarmentTransform,
 } from "@/types/garment";
 import { LANDMARK_INDICES } from "@/utils/poseConstants";
+import { clamp } from "@/utils/interpolation";
 
 /**
  * Minimum visibility score for a landmark to be considered reliable.
@@ -20,7 +21,9 @@ const MIN_VISIBILITY = 0.5;
  * the camera in a try-on context — values beyond it are almost always
  * landmark noise (partial occlusion, motion blur, a single bad detection)
  * rather than genuine body lean. Clamping prevents the garment from
- * snapping into an unrealistic spin on a noisy frame.
+ * snapping into an unrealistic spin on a noisy frame. This clamps the
+ * *measured* angle only — a garment's own rotationOffsetRad (a fixed art
+ * correction) is applied afterward, unclamped.
  */
 const MAX_ROTATION_RAD = (35 * Math.PI) / 180;
 
@@ -116,14 +119,21 @@ export function calculateBodyRotation(
 
 /**
  * Calculates the rendered pixel width for the garment given the current
- * shoulder width and the garment's shoulder-width multiplier.
- * Height is derived from the asset's natural aspect ratio.
+ * shoulder width and the garment's defaultScale, clamped to the garment's
+ * scaleLimits so a bad value in the data file (or a future live "Adjust
+ * Fit" control) can never render an absurd size. Height is derived from
+ * the asset's natural aspect ratio.
  */
 export function calculateGarmentScale(
   shoulderWidthPx: number,
   garment: GarmentDefinition
 ): { width: number; height: number } {
-  const width = shoulderWidthPx * garment.shoulderWidthMultiplier;
+  const effectiveScale = clamp(
+    garment.defaultScale,
+    garment.scaleLimits.min,
+    garment.scaleLimits.max
+  );
+  const width = shoulderWidthPx * effectiveScale;
   const aspectRatio = garment.naturalHeight / garment.naturalWidth;
   return { width, height: width * aspectRatio };
 }
@@ -151,14 +161,33 @@ export function calculateGarmentPosition(
 
 /**
  * Composes the individual calculations into a single GarmentTransform for
- * one frame. Returns null when the shoulder landmarks are not reliable
- * enough to produce a stable result.
+ * one frame. Returns null when:
+ *  - the garment is disabled (enabled: false), or
+ *  - the garment's anchorType isn't one the renderer currently supports, or
+ *  - the shoulder landmarks aren't reliable enough to produce a stable result.
+ *
+ * The garment's rotationOffsetRad (a fixed art-direction correction) is
+ * added on top of the measured, already-clamped shoulder angle.
  */
 export function calculateGarmentTransform(
   landmarks: NormalizedLandmark[],
   dimensions: Dimensions,
   garment: GarmentDefinition
 ): GarmentTransform | null {
+  if (!garment.enabled) return null;
+
+  // Forward-compatible guard: only "shoulders" anchoring is implemented
+  // today. A future anchor type reaching here safely no-ops instead of
+  // computing a meaningless transform.
+  if (garment.anchorType !== "shoulders") {
+    if (import.meta.env.DEV) {
+      console.warn(
+        `[garmentMath] anchorType "${garment.anchorType}" on garment "${garment.id}" is not yet supported by the renderer.`
+      );
+    }
+    return null;
+  }
+
   const shoulder = calculateShoulderMeasurement(landmarks, dimensions);
 
   if (!shoulder.isReliable) return null;
@@ -170,6 +199,6 @@ export function calculateGarmentTransform(
     position,
     width,
     height,
-    rotation: shoulder.angle,
+    rotation: shoulder.angle + garment.rotationOffsetRad,
   };
 }
