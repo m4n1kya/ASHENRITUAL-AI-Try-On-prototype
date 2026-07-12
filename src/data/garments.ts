@@ -10,6 +10,12 @@ import suitUrl from "@/assets/garments/suit.png";
  * garmentMath.ts and useGarmentRenderer.ts never hardcode per-garment
  * values, they only read GarmentDefinition fields.
  *
+ * `fitStyle` drives the two-zone body-fit renderer's per-category rules
+ * (shoulder hug, hip flare, vertical stretch sensitivity, top/bottom
+ * zone split). Mapped from each garment's real-world silhouette:
+ * flowing dresses read closest to a "t-shirt" profile (loose, minimal
+ * flare), the coat is "coat", the tailored suit is "jacket".
+ *
  * To add a new garment: add one object below with a real imageUrl and
  * tuned metadata. Nothing else in the codebase needs to change — TryOn.tsx
  * renders whatever getEnabledGarments() returns.
@@ -23,6 +29,7 @@ const GARMENT_CATALOG: GarmentDefinition[] = [
     naturalWidth: 600,
     naturalHeight: 700,
     anchorType: "shoulders",
+    fitStyle: "t-shirt",
     defaultScale: 2.1,
     scaleLimits: { min: 1.6, max: 2.6 },
     verticalAnchorOffset: 0.08,
@@ -38,13 +45,11 @@ const GARMENT_CATALOG: GarmentDefinition[] = [
     naturalWidth: 700,
     naturalHeight: 900,
     anchorType: "shoulders",
-    // Coats read as boxier and sit wider than the body's actual shoulder
-    // line — a noticeably higher default scale than the fitted pieces.
+    fitStyle: "coat",
     defaultScale: 2.6,
     scaleLimits: { min: 2.1, max: 3.1 },
     verticalAnchorOffset: 0.1,
     rotationOffsetRad: 0,
-    // Outerwear draws over tops once multi-garment layering exists.
     zIndex: 20,
     enabled: true,
   },
@@ -56,8 +61,7 @@ const GARMENT_CATALOG: GarmentDefinition[] = [
     naturalWidth: 600,
     naturalHeight: 950,
     anchorType: "shoulders",
-    // Thin-strap silhouette sits closer to the body than a gown with
-    // sleeves, so it renders narrower relative to shoulder width.
+    fitStyle: "t-shirt",
     defaultScale: 1.75,
     scaleLimits: { min: 1.3, max: 2.2 },
     verticalAnchorOffset: 0.02,
@@ -73,7 +77,7 @@ const GARMENT_CATALOG: GarmentDefinition[] = [
     naturalWidth: 650,
     naturalHeight: 720,
     anchorType: "shoulders",
-    // A fitted blazer tracks shoulder width closely.
+    fitStyle: "jacket",
     defaultScale: 1.95,
     scaleLimits: { min: 1.5, max: 2.4 },
     verticalAnchorOffset: 0.06,

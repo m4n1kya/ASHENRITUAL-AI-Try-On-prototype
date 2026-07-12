@@ -31,6 +31,16 @@ export type GarmentCategory = "top" | "outerwear" | "dress" | "bottom";
 export type GarmentAnchorType = "shoulders";
 
 /**
+ * Which body-aware fitting ruleset a garment uses. Independent from
+ * `category` (which is used for anchor-type/filtering) — this drives how
+ * the two-zone body-fit renderer scales/flares the garment. Optional on
+ * GarmentDefinition: a garment without one falls back to the "t-shirt"
+ * profile, the most neutral ruleset, so adding this field never breaks
+ * an existing garment entry.
+ */
+export type GarmentFitStyle = "t-shirt" | "hoodie" | "jacket" | "coat";
+
+/**
  * Hard bounds on a garment's effective scale multiplier. Exists so a bad
  * or extreme value can never render an absurdly large or tiny garment,
  * and doubles as the exact range a future "Adjust Fit" control (already
@@ -60,6 +70,12 @@ export interface GarmentDefinition {
 
   /** Which landmark group this garment anchors to. */
   anchorType: GarmentAnchorType;
+
+  /**
+   * Which body-aware fitting ruleset this garment uses (t-shirt / hoodie /
+   * jacket / coat). Optional — omitted garments use the "t-shirt" profile.
+   */
+  fitStyle?: GarmentFitStyle;
 
   /**
    * Fraction of shoulder width that maps to garment width at 1.0 scale.
@@ -103,7 +119,7 @@ export interface GarmentDefinition {
 }
 
 // ─────────────────────────────────────────────
-// Per-frame computed transform
+// Per-frame computed transform (legacy single-rect path — still valid)
 // ─────────────────────────────────────────────
 
 export interface GarmentTransform {
@@ -127,6 +143,38 @@ export interface SmoothedTransform {
   width: number;
   height: number;
   rotation: number;
+}
+
+// ─────────────────────────────────────────────
+// Body-fit zones (new — two-zone shoulder/hip-aware renderer)
+// ─────────────────────────────────────────────
+
+/**
+ * One independently-transformed region of a garment texture. Today the
+ * renderer always produces exactly two zones — top (shoulder-anchored)
+ * and bottom (hip-anchored) — each drawn as a rotated/scaled rect sourced
+ * from a horizontal slice of the garment image (sourceY/sourceHeight in
+ * the image's *natural* pixel space, naturalWidth used as source width).
+ *
+ * Deliberately generic: `position`/`width`/`height`/`rotation` are the
+ * exact same shape as GarmentTransform, so each zone can be smoothed with
+ * the existing smoothTransform() unchanged. A future perspective-warp
+ * renderer could return more zones, or add corner points to this
+ * interface, without changing how callers consume the array — iterate
+ * and draw.
+ */
+export interface GarmentZone {
+  /** World-space (canvas pixel) center this zone is drawn at. */
+  position: Point2D;
+  /** Rendered pixel width/height of this zone. */
+  width: number;
+  height: number;
+  /** Shared rotation, radians. */
+  rotation: number;
+  /** Y offset within the garment's natural image dimensions (px). */
+  sourceY: number;
+  /** Height of the source slice within the garment's natural image (px). */
+  sourceHeight: number;
 }
 
 // ─────────────────────────────────────────────
